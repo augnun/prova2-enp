@@ -1,0 +1,250 @@
+---
+title: "Prova 2 Prática - Estatística Não-Paramétrica"
+author: "Augusto Cesar Ribeiro Nunes"
+date: "6 de julho de 2015"
+output: pdf_document
+---
+
+```{r preparacao, echo=F, message=F}
+dados <- read.csv("Questao 3.csv", sep=";", header=T)
+attach(dados)
+require(Hmisc)
+require(NSM3)
+require(MASS)
+```
+
+#Introdução
+  O presente trabalho tem como produto final uma minuta do relatório de administração semestral do Instituto de Resseguros do Brasil (IRB), a partir de um estudo de caso reduzido disponibilizado pelo Professor Doutor Raul Yukihiro Matsushita. Esta tarefa faz parte da 2a Prova Prática da disciplina Métodos Estatísticos 2 (Estatística Não-Paramétrica), ministrada no 1o semestre de 2015 aos alunos de Graduação em Estatística da Universidade de Brasília.
+  
+  Em particular, apresentaremos uma estimativa para a contabilização de provisão para contingências judiciais passivas do IRB, a partir de uma amostra de dados de encerramento referentes a processos cíveis, criminais, fiscais e trabalhistas onde o IRB foi réu, até o dia 31/12/2003. 
+  
+  Esta análise de risco é inerente à natureza de uma empressa de resseguros, que, convenientemente, "adquire" parte da carteira de riscos de seguradoras menores, usualmente quando da ocorrência de apólices de grande valor. Considera-se que os casos estudados são aqueles em que há desacordo entre a parte segurada e a IRB após um dado sinistro, desacordo que usualmente deve-se a interpretação de cobertura contratual.
+
+#Análise
+##Estudo Exploratório 
+
+  É de praxe iniciar um trabalho desta natureza com uma descrição exploratória do problema a ser estudado e as variáveis observadas. Temos as seguintes variáveis no conjunto de dados disponibilizado:
+  
+* __Posição__ indica o estado litigioso do IRB no processo. No conjunto de dados disponibilizado, o IRB é réu para todas as observações.
+* __Tipo__ tipo do processo em questão: Cível, Trabalhista, Tributário ou Outros.
+* __Estado__ Unidade da Federação onde foi impetrado o litígio judicial.
+* __VrCausa__ Valor da Causa, em Reais.
+* __VrPago__ Valor Pago, quando aplicável. Em caso de decisão favorável ao IRB, o valor desta variável é nulo na observação.
+* __Procedência__ Resumo do resultado do processo, se resultou em acordo, outras hipóteses ou julgado procedente/improcedente em decisão monocrática.
+* __Tempo__ Tempo, em meses, decorrido da autuação do processo até a decisão monocrática.
+
+### Variável Tipo do Processo
+```{r exp_tipo, echo=F}
+summary(TIPO)
+par(cex=0.6)
+plot(TIPO, main= "Distribuição do Tipo do Processo")
+
+```
+  Nota-se uma maioria esmagadora de processos cíveis referentes a seguros.
+  
+### Variável Estado
+```{r exp_UF, echo=F}
+summary(Estado)
+par(cex=0.6, las=2)
+plot(Estado, main = "Distribuição dos Estados em que os processos foram impetrados")
+```
+  Como era de se esperar, temos ampla concentração de litígios em Estados onde há maior atividade econômica, como SP, RJ e MG.
+  
+### Variável Valor da Causa
+
+```{r exp_VC, echo=F}
+summary(VrCausa)
+plot(density(na.exclude(VrCausa)), main="Densidade da distribuição da variável Valor da Causa")
+hist(VrCausa, main="Histograma da distribuição da variável Valor da Causa")
+
+```
+
+  Note que tanto as estatísticas de ordem quanto os gráficos de Densidade e Histograma da variável sugerem que sua distribuição segue um modelo de cauda pesada, uma _Power Law_ ou Lei de Potências. Basta atentar para o máximo (486700000), que é cerca de 4587 vezes maior que a estatística do 3o quartil (106100).
+  
+  Podemos então aplicar uma transformação (monótona) logarítmica nesta variável, chamada de __logVrCausa__ no conjunto de dados, cuja distribuição é a seguinte.
+  
+  
+```{r exp_logVC}
+logVrCausa = log(na.exclude(VrCausa))
+logVrCausa[mapply(is.infinite, logVrCausa)] <- NA
+summary(logVrCausa)
+par(cex=0.6)
+plot(density(na.exclude(logVrCausa)), main="Densidade da distribuição da variável Valor da Causa após transformação logarítmica")
+qqnorm(logVrCausa, main="Gráfico Q-Q para a variável Valor da Causa\n pós transformação logarítmica")
+qqline(logVrCausa)
+fitdistr(na.exclude(logVrCausa), "normal")
+ks.test(logVrCausa, "pnorm")
+shapiro.test(logVrCausa)
+```
+
+  Note que após a transformação a variável deixa de assumir comportamento de distribuição com cauda pesada. O gráfico Q-Q sugere que ainda assim a distribuição da variável após a transformação é não-Normal. Na verdade nem seria necessário o gráfico QQ, pois a própria densidade da variável nos mostra uma distribuição bimodal.
+  
+  _Forçando a barra_ e ajustando a partir da máxima verossimilhança uma distribuição Normal a partir da variável transformada, a função _fitdistr_ dá uma estimativa com $\mu = 9.08203565 \pm 0.07506849$ e $\sigma^2 = 3.94234679 \pm 0.05308144$. Entretanto, os testes de Kolmogorov-Smirnov e Shapiro-Wilk __REJEITAM__ a hipótese de Normalidade desta variável.
+  
+### Variável Valor Pago
+```{r exp_VP, echo=F}
+summary(VrPago)
+par(cex=0.6)
+plot(density(na.exclude(VrPago)), main="Densidade da distribuição da variável Valor Pago")
+hist(VrPago, main="Histograma da distribuição da variável Valor Pago")
+
+```
+  Similarmente ao observado no Valor da Causa, o Valor Pago no processo também segue uma distribuição de cauda longa, ou uma Lei de Potência. Aplicando a transformação logarítmica e atribuindo os valores à variável __logVrPago__, temos:
+  
+```{r exp_logVP}
+logVrPago = log(na.exclude(VrPago))
+logVrPago[mapply(is.infinite, logVrPago)] <- NA
+summary(logVrPago)
+par(cex=0.6)
+plot(density(na.exclude(logVrPago)), main="Densidade da distribuição da variável Valor Pago após transformação logarítmica")
+qqnorm(logVrPago, main="Gráfico Q-Q para a variável Valor da Pago\n pós transformação logarítmica")
+qqline(logVrPago)
+fitdistr(na.exclude(logVrPago), "normal")
+ks.test(logVrPago, "pnorm")
+shapiro.test(logVrPago)
+```
+
+  Agora sim temos um melhor ajuste à distribuição Normal da variável transformada, justificado pelo gráfico de densidade e histograma, bem como pelo gráfico Q-Q. O ajuste de Máxima-Verossimilhança a partir de uma distribuição Normal hipótetica nos dá a seguinte estimativa para os parâmetros: $\mu = 11.34039334 \pm 0.11325359$ e $\sigma^2 = 2.37292628 \pm 0.08008238$. Entretanto, os testes de Kolmogorov-Smirnov e Shapiro-Wilk __REJEITAM__ a hipótese de Normalidade desta variável.
+
+###Variável Procedência
+```{r exp_PROC, echo=F}
+summary(Procedencia)
+par(cex=0.6)
+par(las=0, cex.axis=0.6 )
+plot(Procedencia, main = "Distribuição das Procedências dos resultados \nnos processos impetrados")
+```
+  Nota-se prevalência de processos que resultaram em "Outras Hipóteses" (que seriam quais?), seguida de acordos, processos considerados improcedentes, e finalmente, procedentes em sua totalidade ou parte.
+  
+###Variável Tempo
+```{r exp_tempo, echo=F}
+summary(tempo)
+par(cex=0.6)
+plot(density(na.exclude(tempo)), main="Densidade da distribuição da variável Tempo (em meses)")
+hist(VrPago, main="Histograma da distribuição da variável Tempo")
+fitdistr(na.exclude(tempo), "exponential")
+```
+
+  Aqui vemos um retrato da morosidade do Judiciário no Brasil, processos que demoraram até 250 meses (mais de 20 anos) para chegarem a uma decisão. O gráfico de densidade sugere uma distribuição assimétrica, mas não necessariamente com cauda longa, de valores não nulos, então podemos ajustar a distribuição do tempo a uma distribuição Exponencial. O ajuste de máxima verossimilhança nos dá a estimativa $\lambda = 0.0223848928 \pm 0.0006891738$ para o parâmetro de taxa da distribuição Exponencial empírica. Note que $Exp(\lambda) = \Gamma(1,\lambda)$. O teste de Kolmogorov-Smirnov para uma amostra no entanto rejeita a hipótese nula com alto nível de significância.
+  
+### Distribuição da variável diferença entre o valor pago e o valor da causa
+  Criaremos a variável auxiliar delta = logVrPago - logVrCausa.
+```{r}
+delta = logVrPago[VrPago != 0] - logVrCausa[VrPago != 0]
+delta[mapply(is.infinite, delta)] <- NA
+summary(delta)
+plot(density(na.exclude(delta)), main="Densidade da distribuição da variável delta")
+qqnorm(delta, main="Gráfico Q-Q para a variável delta")
+qqline(delta)
+fitdistr(na.exclude(delta), "normal")
+shapiro.test(delta)
+```
+Note que o gráfico nos dá indícios de que a distribuição desta variável é normal, dada sua simetria. O ajuste usando máxima verossimilhança supondo a distribuição normal estima $\mu = 0.8538448 \pm 0.2597719$ e $\sigma^2 = 4.0159756 \pm 0.1836864$. Entretato, os testes de Kolmogorov-Smirnov e Shapiro-Wilk rejeitam a hipótese de normalidade com considerável significância. 
+
+  
+##Estimativa da Probabilidade de um processo durar mais de 260 meses
+
+Utilizaremos um argumento de máxima verossimilhança. Supondo que a duração do processo é uma realização de uma variável Bernoulli com sucesso quando o processo dura mais de 260 meses, e sabendo pelo Princípio da verossimilhança que a mesma resume toda a informação sobre o parâmetro dada pela amostra, criamos uma variável indicadora auxiliar __nProcLongos__ que é igual a um quando o processo durou mais de 260 meses (não estrito), e nula caso contrário. 
+
+```{r}
+nProcLongos = sum(na.exclude(tempo[tempo>260]))
+nProcLongos
+```
+
+Note que, por este argumento, um processo pode durar mais de 260 meses com probabilidade nula. Utilizando a distribuição empírica ajustada pela verossimilhança acima, podemos estimar essa probabilidade calculando $P(X>260)$, com $X \sim Exp(\lambda = 0.0223848928)$, que nos dá $`r dexp(260, rate =  0.0223848928)`$, muito próximo de zero.
+
+##Estimativa para a probabilidade de o valor a ser pago em um processo superar 30 mil vezes o valor da causa
+
+  Como supomos que a distribuição da variável delta é normal, podemos simplesmete obter esta estimativa calculando $P(\frac{logVrPago}{logVrCausa} > 10.30895)$. Como supomos que logVrPago e logVrCausa seguem distribuições Normais, a distribuição de sua razão é Cauchy. Então $P(\frac{logVrPago}{logVrCausa} > 10.30895)$ = $`r 1 - pcauchy(10.30895, location = 4.0159756/2.37292628, scale = (4.0159756/2.37292628))`$.
+
+##Estimativa da probabilidade de o valor a ser pago em um processo superar a quantia de R$ 130.000.000,00
+
+Por raciocínio similar ao feito para a estimativa do processo durar mais de 260 meses, podemos usar um argumento de verossimilhança e obter quantas vezes, na amostra, o valor a ser pago ultrapassa o estipulado.
+```{r}
+nValoresAltos = sum(na.exclude(VrPago[VrPago>130000000]))
+nValoresAltos
+```
+
+O que poderia nos levar à conclusão de que o evento é impossível. No entanto, como trata-se de distribuição de cauda longa, o comportamento nos extremos é inesperado, e então deveríamos estudar o comportamento da distribuição testada nos valores extremos. como $log 130000000$ = $`r log(130000000)`$, e supomos que $logVrPago \sim Normal(\mu = 11.34039334, \sigma^2 = 2.37292628)$, podemos calcular $P(logVrPago > 18,68305)$ = $`r dnorm(18.68305, mean = 11.34039334, sd = 2.37292628, log=F )`$.
+
+##Estudo acerca das probabilidades de ocorrências dos eventos [Y>X] e [Y<X]
+
+  Vamos criar duas novas variáveis: CausamqPago, e PagomqCausa.
+  
+```{r}
+CausamqPago = sum(na.exclude(logVrCausa > logVrPago))
+CausamqPago
+PagomqCausa = sum(na.exclude(logVrCausa < logVrPago))
+PagomqCausa
+```
+
+  Ou seja, em $`r 100*(CausamqPago/length(dados[,1]))`$% dos casos o valor da Causa é maior que o valor Pago, e em $`r 100*(PagomqCausa/length(dados[,1]))`$% dos casos o Valor Pago é maior que o valor da Causa. 
+
+##Teste de dependência entre o Tipo do Processo e as variáveis tempo, Valor Pago, Valor da Causa e delta
+
+```{r}
+chisq.test(dados$TIPO[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"], dados$tempo[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"])
+
+chisq.test(dados$TIPO[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"], logVrCausa[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"])
+
+chisq.test(dados$TIPO[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"], logVrPago[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"])
+
+chisq.test(dados$TIPO[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"], delta[TIPO == "Cível Seguros" | TIPO == "Cível Outros" | TIPO == "Trabalhista"])
+
+```
+
+*Não há dependência entre o tipo de processo e a variável tempo
+*Não há dependência entre o tipo de processo  e a variável log-Valor da Causa
+*Não há dependência entre o tipo de processo e a variável log-Valor Pago
+*Não há dependência entre o tipo de processo e a variável delta
+
+##Testar se as distribuições em SP diferem das no RJ
+```{r teste_SPRJ}
+ks.test(tempo[Estado == "RJ"], tempo[Estado == "SP"])
+ks.test(VrCausa[Estado == "RJ"], VrCausa[Estado == "SP"])
+ks.test(VrPago[Estado == "RJ"], VrPago[Estado == "SP"])
+ks.test(delta[Estado == "RJ"], delta[Estado == "SP"])
+```
+
+As seguintes distribuições são diferentes em SP e RJ:
+
+* Tempo: p-valor = 0.0001254
+* Valor da Causa: p-valor ~ 0 
+
+Por outro lado, o Valor Pago (p-valor = 0.9618), e o delta (p-valor = 0.7147) têm mesma distribuição em RJ e SP com alta significância estatística.
+
+##Estruturas de dependência
+
+```{r dependencia}
+
+plot(tempo,log(VrCausa), main = "Gráfico de Dispersão log-Valor da Causa vs Tempo")
+cor.test(tempo, log(VrCausa))
+hoeffd(tempo, VrCausa)
+
+plot(tempo,VrPago, main = "Gráfico de Dispersão Valor Pago vs Tempo")
+cor.test(tempo, log(VrPago))
+hoeffd(tempo, VrPago)
+
+plot(tempo,delta, main = "Gráfico de Dispersão delta vs Tempo")
+cor.test(tempo, delta)
+hoeffd(tempo, delta)
+
+plot(log(VrCausa), log(VrPago), main = "Gráfico de Dispersão Valor Pago vs log-Valor da Causa" )
+cor.test(log(VrCausa), log(VrPago))
+
+plot(log(VrCausa), delta, main = "Gráfico de Dispersão delta vs log-Valor da Causa")
+cor.test(log(VrCausa), delta)
+
+
+plot(log(VrPago), delta, main = "Gráfico de Dispersão Delta vs log Valor Pago")
+cor.test(log(VrPago), delta)
+```
+
+  Não há correlação linear entre o tempo e o Valor Pago, nem entre o tempo e o delta, tampouco entre o tempo e o logaritmo de delta. Há correlação linear entre o tempo e o Valor da Causa (e também portanto o logaritmo do Valor da Causa), bem como entre o tempo e o logaritmo do Valor Pago.
+  
+  Há correlação linear entre o logaritmo do valor da causa e o logaritmo do valor pago . Não há correlação linear entre o logaritmo do Valor da Causa e o delta, e nem entre log do Valor Pago e o delta.
+  
+  
+  n é muito grande para calcular-se o teste de Hoeffding no computador que foi utilizado para este trabalho. Ou seja, não pude estimar dependência não-linear entre as variáveis.
+  
+#Conclusão
+  Esta minuta de relatório de administração nos possibilitou prever eventos extremos quanto à variável Tempo e Valor Pago, bem como a proporação de eventos em que a Variável Valor da Causa é maior que Valor Pago, e também a ocorrência ou não de correlações - lineares apenas em razão da limitação computacional - entre as variáveis de interesse.
